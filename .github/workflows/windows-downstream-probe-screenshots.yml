@@ -81,7 +81,7 @@ jobs:
         working-directory: work/emsi
         run: |
           dotnet build tools/winui3-mac-test-runtime/tools/WindowsWindowCapture/WindowsWindowCapture.csproj --configuration Release
-          msbuild apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj /restore /p:Configuration=Release
+          dotnet build apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj --configuration Release -p:Platform=x64
 
       - name: Capture downstream probe scenarios
         working-directory: work/emsi
