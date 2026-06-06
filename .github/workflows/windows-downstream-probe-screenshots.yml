@@ -77,6 +77,15 @@ jobs:
             throw "Windows App Runtime installer failed with exit code $LASTEXITCODE."
           }
 
+      - name: Patch downstream probe native XAML compatibility
+        working-directory: work/emsi
+        run: |
+          $mainWindow = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MainWindow.xaml"
+          $xaml = Get-Content $mainWindow -Raw
+          $xaml = $xaml -replace '(?s)\s*<Window\.Resources>.*?</Window\.Resources>', ''
+          $xaml = $xaml -replace '\{ThemeResource AppBackgroundBrush\}', '#F7F8FA'
+          Set-Content -Path $mainWindow -Value $xaml -Encoding UTF8
+
       - name: Build capture tool and downstream probe
         working-directory: work/emsi
         run: |
