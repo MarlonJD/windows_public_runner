@@ -388,6 +388,7 @@ jobs:
               --output "$outDir/windows-reference.png" `
               --metadata-output "$outDir/windows-reference.json" `
               --client-area `
+              --reject-black-border `
               --require-title-match `
               --timeout-seconds 60 `
               --reference-source native-winui `
