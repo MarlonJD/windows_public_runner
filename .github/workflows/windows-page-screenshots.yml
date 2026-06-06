@@ -82,23 +82,41 @@ jobs:
       - name: Build runner harness
         run: dotnet build src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release
 
+      - name: Patch MSIX build task dependencies
+        run: |
+          dotnet new console -o $env:RUNNER_TEMP\permissions-probe --framework net10.0
+          dotnet add $env:RUNNER_TEMP\permissions-probe package System.Security.Permissions --version 8.0.0
+          dotnet restore $env:RUNNER_TEMP\permissions-probe
+          $dll = Get-ChildItem "$env:USERPROFILE\.nuget\packages\system.security.permissions\8.0.0" -Recurse -Filter System.Security.Permissions.dll |
+            Where-Object { $_.FullName -match '\\lib\\net8\.0\\' } |
+            Select-Object -First 1
+          if (-not $dll) { throw 'System.Security.Permissions.dll not found in NuGet cache.' }
+          $buildTools = Get-ChildItem "$env:USERPROFILE\.nuget\packages\microsoft.windows.sdk.buildtools.msix" -Directory |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if (-not $buildTools) { throw 'Microsoft.Windows.SDK.BuildTools.MSIX package folder not found.' }
+          Copy-Item $dll.FullName (Join-Path $buildTools.FullName 'build') -Force
+
       - name: Build Windows app
         working-directory: work/emsi/apps/windows
-        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
+        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64
 
-      - name: Resolve unpackaged app path
-        id: app
+      - name: Register Windows app package
+        id: package
         working-directory: work/emsi/apps/windows
         run: |
-          $exe = Get-ChildItem -Path 'src/MeetingChallenge.Windows/bin/x64/Debug' -Recurse -Filter 'MeetingChallenge.Windows.exe' |
+          $manifest = Get-ChildItem -Path 'src/MeetingChallenge.Windows/bin/x64/Debug' -Recurse -Filter 'AppxManifest.xml' |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
-          if (-not $exe) { throw 'MeetingChallenge.Windows.exe not found after unpackaged build.' }
-          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          if (-not $manifest) { throw 'AppxManifest.xml not found after build.' }
+          Add-AppxPackage -Register $manifest.FullName -ForceUpdateFromAnyVersion
+          $package = Get-AppxPackage -Name 'MeetingChallenge.Windows' | Select-Object -First 1
+          if (-not $package) { throw 'MeetingChallenge.Windows package was not registered.' }
+          "aumid=$($package.PackageFamilyName)!App" >> $env:GITHUB_OUTPUT
 
       - name: Capture page screenshots
         env:
-          EMSI_WINDOWS_APP_PATH: ${{ steps.app.outputs.path }}
+          EMSI_WINDOWS_APP_AUMID: ${{ steps.package.outputs.aumid }}
           EMSI_UI_SCREENSHOT_DIR: ${{ github.workspace }}\_emsi-windows-page-evidence\screenshots
           EMSI_UI_MANIFEST_PATH: ${{ github.workspace }}\_emsi-windows-page-evidence\manifest.json
         run: dotnet run --project src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release
