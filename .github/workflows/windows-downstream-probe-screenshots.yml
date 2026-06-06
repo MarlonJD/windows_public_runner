@@ -217,6 +217,7 @@ jobs:
                           target is not null)
                       {
                           SelectNavigationTarget(target);
+                          expectedRoute = RouteForNavigationTarget(target);
                       }
                       else if (string.Equals(type, "assertProperty", StringComparison.Ordinal) &&
                           string.Equals(target, "CurrentRouteStatusTextBlock", StringComparison.Ordinal) &&
@@ -280,7 +281,12 @@ jobs:
 
               private void SelectNavigationTarget(string target)
               {
-                  var tag = target switch
+                  Navigate(RouteForNavigationTarget(target));
+              }
+
+              private static string RouteForNavigationTarget(string target)
+              {
+                  return target switch
                   {
                       "HomeNavigationItem" => "home",
                       "ChannelsNavigationItem" => "messages",
@@ -290,8 +296,6 @@ jobs:
                       "AdminWorkbenchNavigationItem" => "admin-workbench",
                       _ => "home"
                   };
-
-                  Navigate(tag);
               }
 
               private static void LogScenario(string message)
@@ -367,6 +371,15 @@ jobs:
                   $interaction.key -eq "Text" -and
                   -not [string]::IsNullOrWhiteSpace($interaction.parameter)) {
                 $expectedRoute = $interaction.parameter
+              } elseif ($interaction.type -eq "selectNavigation" -and -not [string]::IsNullOrWhiteSpace($interaction.target)) {
+                switch ($interaction.target) {
+                  "HomeNavigationItem" { $expectedRoute = "home" }
+                  "ChannelsNavigationItem" { $expectedRoute = "messages" }
+                  "SettingsNavigationItem" { $expectedRoute = "status-states" }
+                  "ProfileNavigationItem" { $expectedRoute = "settings-profile" }
+                  "AdminNavigationItem" { $expectedRoute = "admin" }
+                  "AdminWorkbenchNavigationItem" { $expectedRoute = "admin-workbench" }
+                }
               }
             }
 
