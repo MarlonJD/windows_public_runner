@@ -1,0 +1,150 @@
+name: Windows page screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: EMSI monorepo ref to test
+        required: false
+        default: main
+      qa_label:
+        description: emsi_qa destination label
+        required: false
+        default: public-runner
+      language:
+        description: App language
+        required: false
+        default: tr-TR
+      theme:
+        description: App theme
+        required: false
+        default: system
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  capture:
+    name: Capture WinUI pages
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      EMSI_EVIDENCE_ROOT: ${{ runner.temp }}\emsi-windows-page-evidence
+      EMSI_SOURCE_REF: ${{ inputs.source_ref }}
+      EMSI_QA_LABEL: ${{ inputs.qa_label }}
+      EMSI_APP_LANGUAGE: ${{ inputs.language }}
+      EMSI_APP_THEME: ${{ inputs.theme }}
+      EMSI_API_BASE_URL: ${{ secrets.EMSI_API_BASE_URL }}
+      EMSI_WINDOWS_USERNAME: ${{ secrets.EMSI_WINDOWS_USERNAME }}
+      EMSI_WINDOWS_PASSWORD: ${{ secrets.EMSI_WINDOWS_PASSWORD }}
+      EMSI_API_BACKEND: go
+      EMSI_APP_ENVIRONMENT: preprod
+    steps:
+      - name: Checkout runner harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout EMSI source
+        uses: actions/checkout@v4
+        with:
+          repository: MarlonJD/emsi_monorepo
+          ref: ${{ inputs.source_ref }}
+          path: work/emsi
+          token: ${{ secrets.EMSI_SOURCE_PAT || github.token }}
+          persist-credentials: false
+
+      - name: Checkout QA evidence repository
+        uses: actions/checkout@v4
+        with:
+          repository: MarlonJD/emsi_qa
+          path: work/emsi_qa
+          token: ${{ secrets.EMSI_QA_PAT }}
+          persist-credentials: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate secret configuration
+        run: |
+          $required = @('EMSI_API_BASE_URL', 'EMSI_WINDOWS_USERNAME', 'EMSI_WINDOWS_PASSWORD')
+          foreach ($name in $required) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ([string]::IsNullOrWhiteSpace($value)) { throw "Missing required secret: $name" }
+          }
+
+      - name: Build runner harness
+        run: dotnet build src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release
+
+      - name: Build Windows app
+        working-directory: work/emsi/apps/windows
+        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64
+
+      - name: Register Windows app package
+        id: package
+        working-directory: work/emsi/apps/windows
+        run: |
+          $manifest = Get-ChildItem -Path 'src/MeetingChallenge.Windows/bin/x64/Debug' -Recurse -Filter 'AppxManifest.xml' |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $manifest) { throw 'AppxManifest.xml not found after build.' }
+          Add-AppxPackage -Register $manifest.FullName -ForceUpdateFromAnyVersion
+          $package = Get-AppxPackage -Name 'MeetingChallenge.Windows' | Select-Object -First 1
+          if (-not $package) { throw 'MeetingChallenge.Windows package was not registered.' }
+          "aumid=$($package.PackageFamilyName)!App" >> $env:GITHUB_OUTPUT
+
+      - name: Capture page screenshots
+        env:
+          EMSI_WINDOWS_APP_AUMID: ${{ steps.package.outputs.aumid }}
+          EMSI_UI_SCREENSHOT_DIR: ${{ runner.temp }}\emsi-windows-page-evidence\screenshots
+          EMSI_UI_MANIFEST_PATH: ${{ runner.temp }}\emsi-windows-page-evidence\manifest.json
+        run: dotnet run --project src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release
+
+      - name: Copy sanitized evidence to emsi_qa
+        run: |
+          $date = Get-Date -Format 'yyyy-MM-dd'
+          $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+          $label = ($env:EMSI_QA_LABEL -replace '[^A-Za-z0-9._-]', '-')
+          if ([string]::IsNullOrWhiteSpace($label)) { $label = 'public-runner' }
+          $dest = Join-Path 'work/emsi_qa/windows/page-screenshots' "$date-$label-$stamp"
+          New-Item -ItemType Directory -Force -Path (Join-Path $dest 'screenshots') | Out-Null
+          Copy-Item "$env:EMSI_EVIDENCE_ROOT\screenshots\*.jpg" (Join-Path $dest 'screenshots') -Force
+          Copy-Item "$env:EMSI_EVIDENCE_ROOT\manifest.json" $dest -Force
+          @"
+          # Windows Page Screenshots - $date
+
+          Temporary public Windows runner evidence for the EMSI Windows app.
+
+          - Source ref: ``$env:EMSI_SOURCE_REF``
+          - Runner repo: ``MarlonJD/windows_public_runner``
+          - Harness: ``src/WindowsPageEvidence``
+          - Screenshots: JPG
+          - Privacy: manifest is sanitized; screenshots are committed only to the private QA evidence repository.
+          "@ | Set-Content -Path (Join-Path $dest 'README.md') -Encoding UTF8
+
+      - name: Commit and push QA evidence
+        working-directory: work/emsi_qa
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add windows/page-screenshots
+          if (git diff --cached --quiet) {
+            Write-Host 'No QA evidence changes to commit.'
+          } else {
+            git commit -m "Add Windows page screenshot evidence"
+            git push
+          }
+
+      - name: Clean public runner workspace
+        if: always()
+        run: |
+          Remove-Item -Recurse -Force work -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:EMSI_EVIDENCE_ROOT -ErrorAction SilentlyContinue
+          Remove-Item Env:EMSI_WINDOWS_PASSWORD -ErrorAction SilentlyContinue
+          Remove-Item Env:EMSI_WINDOWS_USERNAME -ErrorAction SilentlyContinue
