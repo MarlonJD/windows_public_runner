@@ -86,6 +86,20 @@ jobs:
           $xaml = $xaml -replace '\{ThemeResource AppBackgroundBrush\}', '#F7F8FA'
           Set-Content -Path $mainWindow -Value $xaml -Encoding UTF8
 
+          $appXamlPath = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/App.xaml"
+          $appXaml = Get-Content $appXamlPath -Raw
+          $appXaml = $appXaml -replace '</Application>', @'
+              <Application.Resources>
+                  <ResourceDictionary>
+                      <ResourceDictionary.MergedDictionaries>
+                          <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                      </ResourceDictionary.MergedDictionaries>
+                  </ResourceDictionary>
+              </Application.Resources>
+          </Application>
+          '@
+          Set-Content -Path $appXamlPath -Value $appXaml -Encoding UTF8
+
           $appCodePath = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/App.xaml.cs"
           $appCode = Get-Content $appCodePath -Raw
           $appCode = $appCode -replace "public sealed partial class App : Application`r?`n\{", "public sealed partial class App : Application`n{`n    private Window? mainWindow;`n"
@@ -191,7 +205,7 @@ jobs:
               }
 
               Write-Host "===== Recent Application errors for $($scenario.Name) ====="
-              Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-10); Level = 1,2 } -MaxEvents 20 |
+              Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-10); Level = 1,2 } -MaxEvents 20 -ErrorAction SilentlyContinue |
                 Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message
 
               Write-Host "===== Probe executable layout ====="
