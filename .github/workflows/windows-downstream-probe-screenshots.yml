@@ -128,11 +128,187 @@ jobs:
                   InitializeComponent();
           '@
           $appCode = $appCode -replace "        MainWindow = window;`r?`n", "        mainWindow = window;`n"
+          $appCode = $appCode -replace "        var scenarioPath = TryReadScenarioPath\(args\.Arguments \?\? string\.Empty\);`r?`n        if \(!string\.IsNullOrWhiteSpace\(scenarioPath\)\)`r?`n        \{`r?`n            window\.ApplyScenario\(scenarioPath\);`r?`n        \}", @'
+                  LogLaunchFailure("LaunchArguments=" + (args.Arguments ?? string.Empty));
+                  var scenarioPath = TryReadScenarioPath(args.Arguments ?? string.Empty);
+                  LogLaunchFailure("ScenarioPath=" + (scenarioPath ?? "<none>"));
+                  if (!string.IsNullOrWhiteSpace(scenarioPath))
+                  {
+                      window.DispatcherQueue.TryEnqueue(async () =>
+                      {
+                          await System.Threading.Tasks.Task.Delay(500);
+                          window.ApplyScenario(scenarioPath);
+                      });
+                  }
+          '@
           Set-Content -Path $appCodePath -Value $appCode -Encoding UTF8
 
           $mainWindowCodePath = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MainWindow.xaml.cs"
-          $mainWindowCode = Get-Content $mainWindowCodePath -Raw
-          $mainWindowCode = $mainWindowCode -replace "        RootNavigation\.Select\(HomeNavigationItem\);", "        RootNavigation.SelectedItem = HomeNavigationItem;`n        Navigate(""home"");"
+          $mainWindowCode = @'
+          using MeetingChallenge.WinUI.MacRuntimeProbe.Pages;
+          using Microsoft.UI.Xaml;
+          using Microsoft.UI.Xaml.Controls;
+          using System.Text.Json;
+
+          namespace MeetingChallenge.WinUI.MacRuntimeProbe;
+
+          public sealed partial class MainWindow : Window
+          {
+              private bool isStaff;
+
+              public MainWindow()
+              {
+                  InitializeComponent();
+                  SignedOutFrame.Navigate(typeof(LoginProbePage), this);
+                  ShowSignedOut();
+              }
+
+              public void SignInAsStaff()
+              {
+                  isStaff = true;
+                  SignedOutFrame.Visibility = Visibility.Collapsed;
+                  RootNavigation.Visibility = Visibility.Visible;
+                  AdminNavigationItem.Visibility = Visibility.Visible;
+                  AdminWorkbenchNavigationItem.Visibility = Visibility.Visible;
+                  RootNavigation.SelectedItem = HomeNavigationItem;
+                  Navigate("home");
+              }
+
+              public void ApplyScenario(string scenarioPath)
+              {
+                  LogScenario("ApplyScenario=" + scenarioPath);
+                  if (!File.Exists(scenarioPath))
+                  {
+                      LogScenario("ScenarioMissing=" + scenarioPath);
+                      return;
+                  }
+
+                  using var document = JsonDocument.Parse(File.ReadAllText(scenarioPath));
+                  if (!document.RootElement.TryGetProperty("interactions", out var interactions) ||
+                      interactions.ValueKind != JsonValueKind.Array)
+                  {
+                      LogScenario("ScenarioInteractions=0");
+                      return;
+                  }
+
+                  string? expectedRoute = null;
+                  var interactionCount = 0;
+                  foreach (var interaction in interactions.EnumerateArray())
+                  {
+                      interactionCount++;
+                      var type = interaction.TryGetProperty("type", out var typeElement)
+                          ? typeElement.GetString()
+                          : null;
+                      var target = interaction.TryGetProperty("target", out var targetElement)
+                          ? targetElement.GetString()
+                          : null;
+
+                      LogScenario($"Interaction[{interactionCount}] Type={type ?? "<null>"} Target={target ?? "<null>"}");
+                      if (string.Equals(type, "click", StringComparison.Ordinal) &&
+                          string.Equals(target, "SignInButton", StringComparison.Ordinal))
+                      {
+                          SignInAsStaff();
+                      }
+                      else if (string.Equals(type, "selectNavigation", StringComparison.Ordinal) &&
+                          target is not null)
+                      {
+                          SelectNavigationTarget(target);
+                      }
+                      else if (string.Equals(type, "assertProperty", StringComparison.Ordinal) &&
+                          string.Equals(target, "CurrentRouteStatusTextBlock", StringComparison.Ordinal) &&
+                          interaction.TryGetProperty("key", out var keyElement) &&
+                          string.Equals(keyElement.GetString(), "Text", StringComparison.Ordinal) &&
+                          interaction.TryGetProperty("parameter", out var parameterElement))
+                      {
+                          expectedRoute = parameterElement.GetString();
+                      }
+                  }
+
+                  expectedRoute ??= "signed-out";
+                  LogScenario($"InteractionCount={interactionCount}");
+                  LogScenario($"ExpectedRoute={expectedRoute}");
+                  LogScenario($"FinalRoute={CurrentRouteStatusTextBlock.Text}");
+                  if (!string.Equals(CurrentRouteStatusTextBlock.Text, expectedRoute, StringComparison.Ordinal))
+                  {
+                      throw new InvalidOperationException($"Scenario {scenarioPath} expected route {expectedRoute} but final route was {CurrentRouteStatusTextBlock.Text}.");
+                  }
+              }
+
+              private void ShowSignedOut()
+              {
+                  isStaff = false;
+                  ContentFrame.Content = null;
+                  CurrentRouteStatusTextBlock.Text = "signed-out";
+                  AdminNavigationItem.Visibility = Visibility.Collapsed;
+                  AdminWorkbenchNavigationItem.Visibility = Visibility.Collapsed;
+                  RootNavigation.Visibility = Visibility.Collapsed;
+                  SignedOutFrame.Visibility = Visibility.Visible;
+              }
+
+              private void OnNavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+              {
+                  if (args.SelectedItemContainer?.Tag is string tag)
+                  {
+                      Navigate(tag);
+                  }
+              }
+
+              private void OnLogoutClicked(object sender, RoutedEventArgs args)
+              {
+                  ShowSignedOut();
+              }
+
+              private void Navigate(string tag)
+              {
+                  var (surfaceKey, pageType) = tag switch
+                  {
+                      "admin" when isStaff => ("admin", typeof(AdminProbePage)),
+                      "admin-workbench" when isStaff => ("admin-workbench", typeof(AdminWorkbenchProbePage)),
+                      "messages" => ("messages", typeof(MessagesProbePage)),
+                      "status-states" => ("status-states", typeof(StatusStatesProbePage)),
+                      "settings-profile" => ("settings-profile", typeof(SettingsProfileProbePage)),
+                      _ => ("home", typeof(HomeProbePage))
+                  };
+
+                  CurrentRouteStatusTextBlock.Text = surfaceKey;
+                  ContentFrame.Navigate(pageType);
+              }
+
+              private void SelectNavigationTarget(string target)
+              {
+                  var tag = target switch
+                  {
+                      "HomeNavigationItem" => "home",
+                      "ChannelsNavigationItem" => "messages",
+                      "SettingsNavigationItem" => "status-states",
+                      "ProfileNavigationItem" => "settings-profile",
+                      "AdminNavigationItem" => "admin",
+                      "AdminWorkbenchNavigationItem" => "admin-workbench",
+                      _ => "home"
+                  };
+
+                  Navigate(tag);
+              }
+
+              private static void LogScenario(string message)
+              {
+                  var launchLog = Environment.GetEnvironmentVariable("WINUI3_MAC_NATIVE_LAUNCH_LOG");
+                  if (string.IsNullOrWhiteSpace(launchLog))
+                  {
+                      return;
+                  }
+
+                  try
+                  {
+                      File.AppendAllText(launchLog, message + Environment.NewLine);
+                  }
+                  catch
+                  {
+                      // Best-effort diagnostics only.
+                  }
+              }
+          }
+          '@
           Set-Content -Path $mainWindowCodePath -Value $mainWindowCode -Encoding UTF8
 
       - name: Build capture tool and downstream probe
@@ -180,6 +356,15 @@ jobs:
             New-Item -ItemType Directory -Force $outDir | Out-Null
             $launchLog = Join-Path $outDir "native-launch.log"
             $env:WINUI3_MAC_NATIVE_LAUNCH_LOG = $launchLog
+            $expectedRoute = "signed-out"
+            foreach ($interaction in $scenarioJson.interactions) {
+              if ($interaction.type -eq "assertProperty" -and
+                  $interaction.target -eq "CurrentRouteStatusTextBlock" -and
+                  $interaction.key -eq "Text" -and
+                  -not [string]::IsNullOrWhiteSpace($interaction.parameter)) {
+                $expectedRoute = $interaction.parameter
+              }
+            }
 
             dotnet $captureTool `
               --title "Meeting Challenge Windows macOS Runtime Probe" `
@@ -198,7 +383,7 @@ jobs:
               --viewport $viewport `
               --scale "$($scenarioJson.scale)" `
               --theme $scenarioJson.theme `
-              --settle-ms 1000 `
+              --settle-ms 2000 `
               -- $fixtureExecutable.FullName --scenario $fixtureScenarioPath
 
             $captureExitCode = $LASTEXITCODE
@@ -219,6 +404,19 @@ jobs:
                 Format-Table -AutoSize
 
               throw "Downstream native WinUI reference capture failed for $($scenario.Name) with exit code $captureExitCode."
+            }
+
+            if (-not (Test-Path $launchLog)) {
+              throw "Downstream native WinUI reference capture for $($scenario.Name) did not create native launch log."
+            }
+            $launchLogText = Get-Content $launchLog -Raw
+            Write-Host "===== Native launch log for $($scenario.Name) ====="
+            Write-Host $launchLogText
+            if ($launchLogText -notmatch [regex]::Escape("ExpectedRoute=$expectedRoute")) {
+              throw "Downstream native WinUI reference capture for $($scenario.Name) did not report expected route $expectedRoute."
+            }
+            if ($launchLogText -notmatch [regex]::Escape("FinalRoute=$expectedRoute")) {
+              throw "Downstream native WinUI reference capture for $($scenario.Name) did not report expected route $expectedRoute as final route."
             }
 
             $metadata = Get-Content "$outDir/windows-reference.json" -Raw | ConvertFrom-Json
