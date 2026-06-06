@@ -31,7 +31,7 @@ var manifest = new EvidenceManifest(
     Backend: config.Backend,
     AppEnvironment: config.AppEnvironment,
     BaseUrlHost: SafeHost(config.BaseUrl),
-    UsernameHash: Sha256(config.Username),
+    UsernameHash: string.IsNullOrWhiteSpace(config.Username) ? "app-default" : Sha256(config.Username),
     Pages: result.Pages,
     Notes: [
         "Temporary public Windows runner evidence while winui3-mac-test-runtime is incomplete.",
@@ -68,8 +68,8 @@ sealed record EvidenceConfig(
     string Aumid,
     string ScreenshotDirectory,
     string ManifestPath,
-    string Username,
-    string Password,
+    string? Username,
+    string? Password,
     string? BaseUrl,
     string Backend,
     string AppEnvironment,
@@ -87,8 +87,8 @@ sealed record EvidenceConfig(
             Required("EMSI_WINDOWS_APP_AUMID"),
             screenshotDir,
             manifestPath,
-            Required("EMSI_WINDOWS_USERNAME"),
-            Required("EMSI_WINDOWS_PASSWORD"),
+            Read("EMSI_WINDOWS_USERNAME"),
+            Read("EMSI_WINDOWS_PASSWORD"),
             Read("EMSI_API_BASE_URL"),
             Read("EMSI_API_BACKEND") ?? "go",
             Read("EMSI_APP_ENVIRONMENT") ?? "preprod",
@@ -193,8 +193,15 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
             throw new InvalidOperationException("Login form did not appear.");
         }
 
-        EnterText(username, config.Username);
-        EnterPassword(Require("login-password"), config.Password);
+        if (!string.IsNullOrWhiteSpace(config.Username))
+        {
+            EnterText(username, config.Username);
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.Password))
+        {
+            EnterPassword(Require("login-password"), config.Password);
+        }
         Invoke(Require("login-submit"));
 
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(35);

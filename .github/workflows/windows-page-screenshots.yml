@@ -19,6 +19,9 @@ on:
         description: App theme
         required: false
         default: system
+      api_base_url:
+        description: Temporary API base URL, for example a trycloudflare.com tunnel
+        required: true
 
 permissions:
   contents: read
@@ -38,7 +41,7 @@ jobs:
       EMSI_QA_LABEL: ${{ inputs.qa_label }}
       EMSI_APP_LANGUAGE: ${{ inputs.language }}
       EMSI_APP_THEME: ${{ inputs.theme }}
-      EMSI_API_BASE_URL: ${{ secrets.EMSI_API_BASE_URL }}
+      EMSI_API_BASE_URL: ${{ inputs.api_base_url }}
       EMSI_WINDOWS_USERNAME: ${{ secrets.EMSI_WINDOWS_USERNAME }}
       EMSI_WINDOWS_PASSWORD: ${{ secrets.EMSI_WINDOWS_PASSWORD }}
       EMSI_API_BACKEND: go
@@ -71,13 +74,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Validate secret configuration
+      - name: Validate runtime configuration
         run: |
-          $required = @('EMSI_API_BASE_URL', 'EMSI_WINDOWS_USERNAME', 'EMSI_WINDOWS_PASSWORD')
-          foreach ($name in $required) {
-            $value = [Environment]::GetEnvironmentVariable($name)
-            if ([string]::IsNullOrWhiteSpace($value)) { throw "Missing required secret: $name" }
-          }
+          if ([string]::IsNullOrWhiteSpace($env:EMSI_API_BASE_URL)) { throw 'Missing required workflow input: api_base_url' }
+          if (-not ($env:EMSI_API_BASE_URL -match '^https://')) { throw 'api_base_url must be an HTTPS URL for public runner evidence.' }
 
       - name: Build runner harness
         run: dotnet build src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release
