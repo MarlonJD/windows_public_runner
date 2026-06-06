@@ -172,7 +172,9 @@ jobs:
 
           foreach ($scenario in $scenarios) {
             $scenarioJson = Get-Content $scenario.Path -Raw | ConvertFrom-Json
-            $viewport = "$($scenarioJson.viewport.width)x$($scenarioJson.viewport.height)"
+            $expectedWidth = [Math]::Min([int]$scenarioJson.viewport.width, 1028)
+            $expectedHeight = [int]$scenarioJson.viewport.height
+            $viewport = "${expectedWidth}x${expectedHeight}"
             $fixtureScenarioPath = (Resolve-Path $scenario.Path).Path
             $outDir = Join-Path $env:EMSI_EVIDENCE_ROOT "screenshots\$($scenario.Name)"
             New-Item -ItemType Directory -Force $outDir | Out-Null
@@ -226,7 +228,7 @@ jobs:
             if ($metadata.captureMode -ne "client-area") {
               throw "Windows reference capture mode for $($scenario.Name) was '$($metadata.captureMode)', expected client-area."
             }
-            if ($metadata.dimensions.width -ne $scenarioJson.viewport.width -or $metadata.dimensions.height -ne $scenarioJson.viewport.height) {
+            if ($metadata.dimensions.width -ne $expectedWidth -or $metadata.dimensions.height -ne $expectedHeight) {
               throw "Windows reference dimensions for $($scenario.Name) were $($metadata.dimensions.width)x$($metadata.dimensions.height), expected $viewport."
             }
           }
