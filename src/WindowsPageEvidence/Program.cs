@@ -44,6 +44,10 @@ File.WriteAllText(config.ManifestPath, JsonSerializer.Serialize(manifest, jsonOp
 Console.WriteLine($"Manifest: {config.ManifestPath}");
 Console.WriteLine($"Screenshots: {config.ScreenshotDirectory}");
 Console.WriteLine($"Status: {manifest.Status}");
+foreach (var page in manifest.Pages.Where(page => page.Status != "passed"))
+{
+    Console.WriteLine($"Page {page.Id}: {page.Status} {page.Note}".TrimEnd());
+}
 
 return manifest.Status == "passed" ? 0 : 65;
 
@@ -266,6 +270,7 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
         if (window is null) return null;
         foreach (var descendant in window.FindAllDescendants())
         {
+            if (!IsOnScreen(descendant)) continue;
             var text = ReadText(descendant);
             if (string.IsNullOrWhiteSpace(text)) continue;
             if (text.Contains("Could not load this surface", StringComparison.OrdinalIgnoreCase) ||
@@ -277,6 +282,18 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
         }
 
         return null;
+    }
+
+    private static bool IsOnScreen(AutomationElement element)
+    {
+        try
+        {
+            return element.Properties.IsOffscreen.ValueOrDefault != true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void Invoke(AutomationElement element)
