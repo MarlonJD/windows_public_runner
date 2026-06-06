@@ -6,8 +6,8 @@ This repository must not retain EMSI source, screenshots, logs, tokens, account 
 
 ## Required Secrets
 
-- `EMSI_SOURCE_PAT`: token with read access to `MarlonJD/emsi_monorepo` when that repository is private.
-- `EMSI_QA_PAT`: token with write access to `MarlonJD/emsi_qa`.
+- `EMSI_SOURCE_SSH_KEY`: private key for the read-only deploy key on `MarlonJD/emsi_monorepo`.
+- `EMSI_QA_SSH_KEY`: private key for the write-enabled deploy key on `MarlonJD/emsi_qa`.
 - `EMSI_WINDOWS_USERNAME`: disposable Windows smoke account username.
 - `EMSI_WINDOWS_PASSWORD`: disposable Windows smoke account password.
 - `EMSI_API_BASE_URL`: API base URL for the Windows app.

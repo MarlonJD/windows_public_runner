@@ -55,7 +55,7 @@ jobs:
           repository: MarlonJD/emsi_monorepo
           ref: ${{ inputs.source_ref }}
           path: work/emsi
-          token: ${{ secrets.EMSI_SOURCE_PAT || github.token }}
+          ssh-key: ${{ secrets.EMSI_SOURCE_SSH_KEY }}
           persist-credentials: false
 
       - name: Checkout QA evidence repository
@@ -63,7 +63,7 @@ jobs:
         with:
           repository: MarlonJD/emsi_qa
           path: work/emsi_qa
-          token: ${{ secrets.EMSI_QA_PAT }}
+          ssh-key: ${{ secrets.EMSI_QA_SSH_KEY }}
           persist-credentials: true
 
       - name: Setup .NET
