@@ -99,7 +99,16 @@ jobs:
             Sort-Object Name -Descending |
             Select-Object -First 1
           if (-not $buildTools) { throw 'Microsoft.Windows.SDK.BuildTools.MSIX package folder not found.' }
-          Copy-Item $dll.FullName (Join-Path $buildTools.FullName 'build') -Force
+          $probeDirs = @(
+            $buildTools.FullName,
+            (Join-Path $buildTools.FullName 'build'),
+            (Join-Path $buildTools.FullName 'buildTransitive'),
+            (Join-Path $buildTools.FullName 'tools')
+          )
+          foreach ($dir in $probeDirs) {
+            if (Test-Path $dir) { Copy-Item $dll.FullName $dir -Force }
+          }
+          Get-ChildItem $buildTools.FullName -Directory -Recurse | ForEach-Object { Copy-Item $dll.FullName $_.FullName -Force }
 
       - name: Build Windows app
         working-directory: work/emsi/apps/windows
