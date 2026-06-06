@@ -112,7 +112,7 @@ jobs:
 
       - name: Build Windows app
         working-directory: work/emsi/apps/windows
-        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64
+        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64 -p:WindowsAppSDKSelfContained=true
 
       - name: Register Windows app package
         id: package
