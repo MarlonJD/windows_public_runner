@@ -101,7 +101,7 @@ jobs:
         working-directory: work/emsi
         run: |
           dotnet build tools/winui3-mac-test-runtime/tools/WindowsWindowCapture/WindowsWindowCapture.csproj --configuration Release
-          dotnet build apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj --configuration Release -p:Platform=x64 -p:EnableDefaultApplicationDefinition=false
+          dotnet build apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj --configuration Release -p:Platform=x64 -p:EnableDefaultApplicationDefinition=false -p:WindowsAppSDKSelfContained=true
 
       - name: Capture downstream probe scenarios
         working-directory: work/emsi
