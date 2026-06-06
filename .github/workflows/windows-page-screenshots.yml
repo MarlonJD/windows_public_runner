@@ -84,24 +84,21 @@ jobs:
 
       - name: Build Windows app
         working-directory: work/emsi/apps/windows
-        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64
+        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64 -p:WindowsPackageType=None
 
-      - name: Register Windows app package
-        id: package
+      - name: Resolve unpackaged app path
+        id: app
         working-directory: work/emsi/apps/windows
         run: |
-          $manifest = Get-ChildItem -Path 'src/MeetingChallenge.Windows/bin/x64/Debug' -Recurse -Filter 'AppxManifest.xml' |
+          $exe = Get-ChildItem -Path 'src/MeetingChallenge.Windows/bin/x64/Debug' -Recurse -Filter 'MeetingChallenge.Windows.exe' |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
-          if (-not $manifest) { throw 'AppxManifest.xml not found after build.' }
-          Add-AppxPackage -Register $manifest.FullName -ForceUpdateFromAnyVersion
-          $package = Get-AppxPackage -Name 'MeetingChallenge.Windows' | Select-Object -First 1
-          if (-not $package) { throw 'MeetingChallenge.Windows package was not registered.' }
-          "aumid=$($package.PackageFamilyName)!App" >> $env:GITHUB_OUTPUT
+          if (-not $exe) { throw 'MeetingChallenge.Windows.exe not found after unpackaged build.' }
+          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
 
       - name: Capture page screenshots
         env:
-          EMSI_WINDOWS_APP_AUMID: ${{ steps.package.outputs.aumid }}
+          EMSI_WINDOWS_APP_PATH: ${{ steps.app.outputs.path }}
           EMSI_UI_SCREENSHOT_DIR: ${{ github.workspace }}\_emsi-windows-page-evidence\screenshots
           EMSI_UI_MANIFEST_PATH: ${{ github.workspace }}\_emsi-windows-page-evidence\manifest.json
         run: dotnet run --project src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release

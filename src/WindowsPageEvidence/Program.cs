@@ -65,7 +65,8 @@ static string Sha256(string value)
 }
 
 sealed record EvidenceConfig(
-    string Aumid,
+    string? Aumid,
+    string? AppPath,
     string ScreenshotDirectory,
     string ManifestPath,
     string? Username,
@@ -84,7 +85,8 @@ sealed record EvidenceConfig(
         var manifestPath = Read("EMSI_UI_MANIFEST_PATH") ?? Path.Combine(Path.GetDirectoryName(screenshotDir) ?? screenshotDir, "manifest.json");
 
         return new EvidenceConfig(
-            Required("EMSI_WINDOWS_APP_AUMID"),
+            Read("EMSI_WINDOWS_APP_AUMID"),
+            Read("EMSI_WINDOWS_APP_PATH"),
             screenshotDir,
             manifestPath,
             Read("EMSI_WINDOWS_USERNAME"),
@@ -172,6 +174,17 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
 
     private void Launch()
     {
+        if (!string.IsNullOrWhiteSpace(config.AppPath))
+        {
+            app = Application.Launch(config.AppPath, config.AppArguments());
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.Aumid))
+        {
+            throw new InvalidOperationException("Set EMSI_WINDOWS_APP_PATH or EMSI_WINDOWS_APP_AUMID.");
+        }
+
         app = Application.LaunchStoreApp(config.Aumid, config.AppArguments());
     }
 
