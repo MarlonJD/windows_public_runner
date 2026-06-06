@@ -244,6 +244,7 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
     {
         var fileName = $"windows-page-{SafeFilePart(id)}.jpg";
         var path = Path.Combine(config.ScreenshotDirectory, fileName);
+        var loadingError = WaitForPageSettled();
         var pageError = DetectPageError();
         try
         {
@@ -254,13 +255,30 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
             using var parameters = new EncoderParameters(1);
             parameters.Param[0] = new EncoderParameter(Encoder.Quality, 88L);
             image.Save(path, encoder, parameters);
-            var status = File.Exists(path) && pageError is null ? "passed" : "failed";
-            return new PageCapture(id, title, fileName, status, pageError, state);
+            var note = loadingError ?? pageError;
+            var status = File.Exists(path) && note is null ? "passed" : "failed";
+            return new PageCapture(id, title, fileName, status, note, state);
         }
         catch (Exception ex)
         {
             return new PageCapture(id, title, null, "failed", ex.GetType().Name, state);
         }
+    }
+
+    private string? WaitForPageSettled()
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(12);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!HasVisibleLoadingState())
+            {
+                return null;
+            }
+
+            Thread.Sleep(300);
+        }
+
+        return "Loading state still visible.";
     }
 
     private CaptureImage CaptureTarget()
@@ -324,6 +342,26 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
         }
 
         return null;
+    }
+
+    private bool HasVisibleLoadingState()
+    {
+        if (window is null) return false;
+        foreach (var descendant in window.FindAllDescendants())
+        {
+            if (!IsOnScreen(descendant)) continue;
+            var text = ReadText(descendant);
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            if (text.Contains("Loading latest data", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("Loading MVP product data", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("Güncel veri yükleniyor", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("MVP ürün verisi yükleniyor", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool IsOnScreen(AutomationElement element)
