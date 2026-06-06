@@ -41,7 +41,6 @@ jobs:
           ref: ${{ inputs.source_ref }}
           path: work/emsi
           ssh-key: ${{ secrets.EMSI_SOURCE_SSH_KEY }}
-          submodules: recursive
           persist-credentials: false
 
       - name: Checkout QA evidence repository
@@ -61,6 +60,10 @@ jobs:
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
+
+      - name: Restore required EMSI submodules
+        working-directory: work/emsi
+        run: git submodule update --init tools/winui3-mac-test-runtime
 
       - name: Install Windows App Runtime 1.7
         run: |
