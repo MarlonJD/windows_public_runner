@@ -356,8 +356,8 @@ jobs:
 
           foreach ($scenario in $scenarios) {
             $scenarioJson = Get-Content $scenario.Path -Raw | ConvertFrom-Json
-            $expectedWidth = [Math]::Min([int]$scenarioJson.viewport.width, 1028)
-            $expectedHeight = [int]$scenarioJson.viewport.height
+            $expectedWidth = [Math]::Min([int]$scenarioJson.viewport.width, 960)
+            $expectedHeight = [Math]::Min([int]$scenarioJson.viewport.height, 640)
             $viewport = "${expectedWidth}x${expectedHeight}"
             $fixtureScenarioPath = (Resolve-Path $scenario.Path).Path
             $outDir = Join-Path $env:EMSI_EVIDENCE_ROOT "screenshots\$($scenario.Name)"
