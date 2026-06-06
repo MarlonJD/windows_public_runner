@@ -63,7 +63,10 @@ jobs:
 
       - name: Restore required EMSI submodules
         working-directory: work/emsi
-        run: git submodule update --init tools/winui3-mac-test-runtime
+        run: |
+          git submodule update --init tools/winui3-mac-test-runtime
+          git -C tools/winui3-mac-test-runtime fetch origin main
+          git -C tools/winui3-mac-test-runtime checkout origin/main
 
       - name: Install Windows App Runtime 1.7
         run: |
