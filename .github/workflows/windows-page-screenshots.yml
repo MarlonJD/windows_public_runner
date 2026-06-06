@@ -33,7 +33,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     env:
-      EMSI_EVIDENCE_ROOT: ${{ runner.temp }}\emsi-windows-page-evidence
+      EMSI_EVIDENCE_ROOT: ${{ github.workspace }}\_emsi-windows-page-evidence
       EMSI_SOURCE_REF: ${{ inputs.source_ref }}
       EMSI_QA_LABEL: ${{ inputs.qa_label }}
       EMSI_APP_LANGUAGE: ${{ inputs.language }}
@@ -102,8 +102,8 @@ jobs:
       - name: Capture page screenshots
         env:
           EMSI_WINDOWS_APP_AUMID: ${{ steps.package.outputs.aumid }}
-          EMSI_UI_SCREENSHOT_DIR: ${{ runner.temp }}\emsi-windows-page-evidence\screenshots
-          EMSI_UI_MANIFEST_PATH: ${{ runner.temp }}\emsi-windows-page-evidence\manifest.json
+          EMSI_UI_SCREENSHOT_DIR: ${{ github.workspace }}\_emsi-windows-page-evidence\screenshots
+          EMSI_UI_MANIFEST_PATH: ${{ github.workspace }}\_emsi-windows-page-evidence\manifest.json
         run: dotnet run --project src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release
 
       - name: Copy sanitized evidence to emsi_qa
