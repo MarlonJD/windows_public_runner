@@ -130,7 +130,11 @@ jobs:
           $appCode = $appCode -replace "        MainWindow = window;`r?`n", "        mainWindow = window;`n"
           $appCode = $appCode -replace "        var scenarioPath = TryReadScenarioPath\(args\.Arguments \?\? string\.Empty\);`r?`n        if \(!string\.IsNullOrWhiteSpace\(scenarioPath\)\)`r?`n        \{`r?`n            window\.ApplyScenario\(scenarioPath\);`r?`n        \}", @'
                   LogLaunchFailure("LaunchArguments=" + (args.Arguments ?? string.Empty));
-                  var scenarioPath = TryReadScenarioPath(args.Arguments ?? string.Empty);
+                  var commandLineArguments = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
+                  LogLaunchFailure("CommandLineArguments=" + commandLineArguments);
+                  var scenarioPath =
+                      TryReadScenarioPath(args.Arguments ?? string.Empty) ??
+                      TryReadScenarioPath(commandLineArguments);
                   LogLaunchFailure("ScenarioPath=" + (scenarioPath ?? "<none>"));
                   if (!string.IsNullOrWhiteSpace(scenarioPath))
                   {
