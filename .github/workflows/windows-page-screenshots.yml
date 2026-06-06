@@ -82,6 +82,10 @@ jobs:
       - name: Build runner harness
         run: dotnet build src/WindowsPageEvidence/WindowsPageEvidence.csproj -c Release
 
+      - name: Restore Windows app packages
+        working-directory: work/emsi/apps/windows
+        run: dotnet restore src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -p:Platform=x64
+
       - name: Patch MSIX build task dependencies
         run: |
           dotnet new console -o $env:RUNNER_TEMP\permissions-probe --framework net10.0
