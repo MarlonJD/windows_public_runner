@@ -84,7 +84,7 @@ jobs:
 
       - name: Build Windows app
         working-directory: work/emsi/apps/windows
-        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64 -p:WindowsPackageType=None
+        run: dotnet build src/MeetingChallenge.Windows/MeetingChallenge.Windows.csproj -c Debug -p:Platform=x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
 
       - name: Resolve unpackaged app path
         id: app

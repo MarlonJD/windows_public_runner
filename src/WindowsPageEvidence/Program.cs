@@ -104,16 +104,21 @@ sealed record EvidenceConfig(
     {
         var args = new List<string>
         {
-            "--evidence-mode",
-            $"--language={Language}",
-            $"--theme={Theme}",
-            $"--backend={Backend}",
-            $"--environment={AppEnvironment}"
+            "--reset-session",
+            "--language",
+            Language,
+            "--theme",
+            Theme,
+            "--api-backend",
+            Backend,
+            "--app-environment",
+            AppEnvironment
         };
 
         if (!string.IsNullOrWhiteSpace(BaseUrl))
         {
-            args.Add($"--base-url={BaseUrl}");
+            args.Add("--api-base-url");
+            args.Add(BaseUrl);
         }
 
         return string.Join(' ', args.Select(Quote));
