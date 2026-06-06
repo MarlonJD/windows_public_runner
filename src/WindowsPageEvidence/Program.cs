@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FlaUI.Core;
@@ -247,7 +249,7 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
         {
             window!.SetForeground();
             Thread.Sleep(250);
-            using var image = Capture.Element(window).Bitmap;
+            using var image = CaptureTarget().Bitmap;
             var encoder = ImageCodecInfo.GetImageEncoders().First(codec => codec.FormatID == ImageFormat.Jpeg.Guid);
             using var parameters = new EncoderParameters(1);
             parameters.Param[0] = new EncoderParameter(Encoder.Quality, 88L);
@@ -258,6 +260,45 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
         catch (Exception ex)
         {
             return new PageCapture(id, title, null, "failed", ex.GetType().Name, state);
+        }
+    }
+
+    private CaptureImage CaptureTarget()
+    {
+        var clientRectangle = ClientScreenRectangle();
+        return clientRectangle.Width > 0 && clientRectangle.Height > 0
+            ? Capture.Rectangle(clientRectangle)
+            : Capture.Element(window!);
+    }
+
+    private Rectangle ClientScreenRectangle()
+    {
+        try
+        {
+            var handle = new IntPtr(window!.Properties.NativeWindowHandle.Value);
+            if (handle == IntPtr.Zero ||
+                !GetClientRect(handle, out var clientRect) ||
+                clientRect.Right <= clientRect.Left ||
+                clientRect.Bottom <= clientRect.Top)
+            {
+                return Rectangle.Empty;
+            }
+
+            var topLeft = new NativePoint(clientRect.Left, clientRect.Top);
+            if (!ClientToScreen(handle, ref topLeft))
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                topLeft.X,
+                topLeft.Y,
+                clientRect.Right - clientRect.Left,
+                clientRect.Bottom - clientRect.Top);
+        }
+        catch
+        {
+            return Rectangle.Empty;
         }
     }
 
@@ -362,6 +403,34 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
         if (element is null) return null;
         try { if (!string.IsNullOrWhiteSpace(element.Name)) return element.Name; } catch { }
         try { return element.Patterns.Value.PatternOrDefault?.Value.ValueOrDefault; } catch { return null; }
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetClientRect(IntPtr hWnd, out NativeRect lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref NativePoint lpPoint);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public NativePoint(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public int X;
+        public int Y;
     }
 
     private static string SafeFilePart(string value) => new(value.Select(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '-').ToArray());
