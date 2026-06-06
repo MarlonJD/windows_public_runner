@@ -277,6 +277,7 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
                 text.Contains("This surface could not load", StringComparison.OrdinalIgnoreCase) ||
                 text.Contains("SurfaceErrorTitle", StringComparison.OrdinalIgnoreCase))
             {
+                Console.WriteLine($"Detected surface error element: {Describe(descendant)}");
                 return "Surface load error visible.";
             }
         }
@@ -284,15 +285,47 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
         return null;
     }
 
-    private static bool IsOnScreen(AutomationElement element)
+    private bool IsOnScreen(AutomationElement element)
     {
         try
         {
-            return element.Properties.IsOffscreen.ValueOrDefault != true;
+            if (element.Properties.IsOffscreen.ValueOrDefault == true)
+            {
+                return false;
+            }
+
+            var elementRect = element.Properties.BoundingRectangle.ValueOrDefault;
+            if (elementRect.Width <= 0 || elementRect.Height <= 0)
+            {
+                return false;
+            }
+
+            var windowRect = window?.Properties.BoundingRectangle.ValueOrDefault;
+            if (windowRect is null || windowRect.Value.Width <= 0 || windowRect.Value.Height <= 0)
+            {
+                return true;
+            }
+
+            return elementRect.IntersectsWith(windowRect.Value);
         }
         catch
         {
             return false;
+        }
+    }
+
+    private static string Describe(AutomationElement element)
+    {
+        try
+        {
+            var rect = element.Properties.BoundingRectangle.ValueOrDefault;
+            var automationId = element.Properties.AutomationId.ValueOrDefault ?? "";
+            var controlType = element.Properties.ControlType.ValueOrDefault.ToString();
+            return $"automationId='{automationId}' controlType='{controlType}' rect='{rect.X},{rect.Y},{rect.Width},{rect.Height}'";
+        }
+        catch
+        {
+            return "unavailable";
         }
     }
 
