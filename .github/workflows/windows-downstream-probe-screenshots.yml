@@ -86,6 +86,17 @@ jobs:
           $xaml = $xaml -replace '\{ThemeResource AppBackgroundBrush\}', '#F7F8FA'
           Set-Content -Path $mainWindow -Value $xaml -Encoding UTF8
 
+          $appCodePath = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/App.xaml.cs"
+          $appCode = Get-Content $appCodePath -Raw
+          $appCode = $appCode -replace "public sealed partial class App : Application`r?`n\{", "public sealed partial class App : Application`n{`n    private Window? mainWindow;`n"
+          $appCode = $appCode -replace "        MainWindow = window;`r?`n", "        mainWindow = window;`n"
+          Set-Content -Path $appCodePath -Value $appCode -Encoding UTF8
+
+          $mainWindowCodePath = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MainWindow.xaml.cs"
+          $mainWindowCode = Get-Content $mainWindowCodePath -Raw
+          $mainWindowCode = $mainWindowCode -replace "        RootNavigation\.Select\(HomeNavigationItem\);", "        RootNavigation.SelectedItem = HomeNavigationItem;`n        Navigate(""home"");"
+          Set-Content -Path $mainWindowCodePath -Value $mainWindowCode -Encoding UTF8
+
       - name: Build capture tool and downstream probe
         working-directory: work/emsi
         run: |
