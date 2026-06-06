@@ -170,7 +170,7 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
             }
 
             Invoke(item);
-            Thread.Sleep(900);
+            Thread.Sleep(1800);
             pages.Add(CaptureCurrent(page.Id, page.Title, "visible"));
         }
 
@@ -238,6 +238,7 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
     {
         var fileName = $"windows-page-{SafeFilePart(id)}.jpg";
         var path = Path.Combine(config.ScreenshotDirectory, fileName);
+        var pageError = DetectPageError();
         try
         {
             window!.SetForeground();
@@ -247,7 +248,8 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
             using var parameters = new EncoderParameters(1);
             parameters.Param[0] = new EncoderParameter(Encoder.Quality, 88L);
             image.Save(path, encoder, parameters);
-            return new PageCapture(id, title, fileName, File.Exists(path) ? "passed" : "failed", null, state);
+            var status = File.Exists(path) && pageError is null ? "passed" : "failed";
+            return new PageCapture(id, title, fileName, status, pageError, state);
         }
         catch (Exception ex)
         {
@@ -258,6 +260,24 @@ sealed class PageEvidenceDriver(EvidenceConfig config) : IDisposable
     private AutomationElement? Find(string automationId) => window?.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
     private AutomationElement Require(string automationId) => Find(automationId) ?? throw new InvalidOperationException($"Required element '{automationId}' not found.");
     private AutomationElement? WaitFor(string automationId, TimeSpan timeout) => Retry.WhileNull(() => Find(automationId), timeout, TimeSpan.FromMilliseconds(250)).Result;
+
+    private string? DetectPageError()
+    {
+        if (window is null) return null;
+        foreach (var descendant in window.FindAllDescendants())
+        {
+            var text = ReadText(descendant);
+            if (string.IsNullOrWhiteSpace(text)) continue;
+            if (text.Contains("Could not load this surface", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("This surface could not load", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("SurfaceErrorTitle", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Surface load error visible.";
+            }
+        }
+
+        return null;
+    }
 
     private static void Invoke(AutomationElement element)
     {
