@@ -81,7 +81,7 @@ jobs:
         working-directory: work/emsi
         run: |
           dotnet build tools/winui3-mac-test-runtime/tools/WindowsWindowCapture/WindowsWindowCapture.csproj --configuration Release
-          dotnet build apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj --configuration Release -p:Platform=x64
+          dotnet build apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj --configuration Release -p:Platform=x64 -p:EnableDefaultApplicationDefinition=false
 
       - name: Capture downstream probe scenarios
         working-directory: work/emsi
@@ -105,7 +105,12 @@ jobs:
 
           $captureTool = "tools/winui3-mac-test-runtime/tools/WindowsWindowCapture/bin/Release/net10.0-windows/WindowsWindowCapture.dll"
           $fixtureProject = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj"
-          $fixtureExecutable = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/bin/Release/net10.0-windows10.0.19041.0/MeetingChallenge.WinUI.MacRuntimeProbe.exe"
+          $fixtureExecutable = Get-ChildItem "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/bin" -Recurse -Filter "MeetingChallenge.WinUI.MacRuntimeProbe.exe" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $fixtureExecutable) {
+            throw "MeetingChallenge.WinUI.MacRuntimeProbe.exe was not found after build."
+          }
 
           foreach ($scenario in $scenarios) {
             $scenarioJson = Get-Content $scenario.Path -Raw | ConvertFrom-Json
@@ -134,7 +139,7 @@ jobs:
               --scale "$($scenarioJson.scale)" `
               --theme $scenarioJson.theme `
               --settle-ms 1000 `
-              -- $fixtureExecutable --scenario $fixtureScenarioPath
+              -- $fixtureExecutable.FullName --scenario $fixtureScenarioPath
 
             $captureExitCode = $LASTEXITCODE
             Remove-Item Env:\WINUI3_MAC_NATIVE_LAUNCH_LOG -ErrorAction SilentlyContinue
