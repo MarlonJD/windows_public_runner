@@ -89,6 +89,27 @@ jobs:
           $appCodePath = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/App.xaml.cs"
           $appCode = Get-Content $appCodePath -Raw
           $appCode = $appCode -replace "public sealed partial class App : Application`r?`n\{", "public sealed partial class App : Application`n{`n    private Window? mainWindow;`n"
+          $appCode = $appCode -replace "        InitializeComponent\(\);", @'
+                  var launchLog = Environment.GetEnvironmentVariable("WINUI3_MAC_NATIVE_LAUNCH_LOG") ?? "native-launch.log";
+                  void LogLaunchFailure(string message)
+                  {
+                      try
+                      {
+                          File.AppendAllText(launchLog, message + Environment.NewLine);
+                      }
+                      catch
+                      {
+                          // Best-effort diagnostics only.
+                      }
+                  }
+
+                  AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
+                      LogLaunchFailure("AppDomain.UnhandledException: " + eventArgs.ExceptionObject);
+                  UnhandledException += (_, eventArgs) =>
+                      LogLaunchFailure("Application.UnhandledException: " + eventArgs.Exception);
+
+                  InitializeComponent();
+          '@
           $appCode = $appCode -replace "        MainWindow = window;`r?`n", "        mainWindow = window;`n"
           Set-Content -Path $appCodePath -Value $appCode -Encoding UTF8
 
@@ -168,6 +189,15 @@ jobs:
                 Write-Host "===== Native launch log for $($scenario.Name) ====="
                 Get-Content $launchLog -Raw
               }
+
+              Write-Host "===== Recent Application errors for $($scenario.Name) ====="
+              Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-10); Level = 1,2 } -MaxEvents 20 |
+                Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message
+
+              Write-Host "===== Probe executable layout ====="
+              Get-ChildItem $fixtureExecutable.DirectoryName -Force |
+                Select-Object Name, Length, LastWriteTime |
+                Format-Table -AutoSize
 
               throw "Downstream native WinUI reference capture failed for $($scenario.Name) with exit code $captureExitCode."
             }
