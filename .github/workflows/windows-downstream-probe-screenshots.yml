@@ -1,0 +1,199 @@
+name: Windows downstream probe screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: EMSI monorepo ref to capture
+        required: false
+        default: main
+      qa_label:
+        description: emsi_qa destination label
+        required: false
+        default: downstream-probe
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  capture:
+    name: Capture downstream probe screenshots
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      EMSI_EVIDENCE_ROOT: ${{ github.workspace }}\_emsi-downstream-probe-evidence
+      EMSI_SOURCE_REF: ${{ inputs.source_ref }}
+      EMSI_QA_LABEL: ${{ inputs.qa_label }}
+    steps:
+      - name: Checkout runner harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout EMSI source
+        uses: actions/checkout@v4
+        with:
+          repository: MarlonJD/emsi_monorepo
+          ref: ${{ inputs.source_ref }}
+          path: work/emsi
+          ssh-key: ${{ secrets.EMSI_SOURCE_SSH_KEY }}
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Checkout QA evidence repository
+        uses: actions/checkout@v4
+        with:
+          repository: MarlonJD/emsi_qa
+          path: work/emsi_qa
+          ssh-key: ${{ secrets.EMSI_QA_SSH_KEY }}
+          persist-credentials: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install Windows App Runtime 1.7
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "WindowsAppRuntimeInstall-x64.exe"
+          Invoke-WebRequest `
+            -Uri "https://aka.ms/windowsappsdk/1.7/1.7.250401001/windowsappruntimeinstall-x64.exe" `
+            -OutFile $installer
+
+          & $installer --quiet
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows App Runtime installer failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Build capture tool and downstream probe
+        working-directory: work/emsi
+        run: |
+          dotnet build tools/winui3-mac-test-runtime/tools/WindowsWindowCapture/WindowsWindowCapture.csproj --configuration Release
+          msbuild apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj /restore /p:Configuration=Release
+
+      - name: Capture downstream probe scenarios
+        working-directory: work/emsi
+        run: |
+          $sourceCommit = git rev-parse HEAD
+          $runnerImage = $env:ImageVersion
+          if ([string]::IsNullOrWhiteSpace($runnerImage)) {
+            $runnerImage = $env:ImageOS
+          }
+
+          $scenarios = @(
+            @{ Name = "login-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/login-light.json" },
+            @{ Name = "shell-staff-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/shell-staff-light.json" },
+            @{ Name = "messages-multiline-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/messages-multiline-light.json" },
+            @{ Name = "admin-dashboard-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/admin-dashboard-light.json" },
+            @{ Name = "admin-workbench-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/admin-workbench-light.json" },
+            @{ Name = "command-search-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/command-search-light.json" },
+            @{ Name = "status-states-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/status-states-light.json" },
+            @{ Name = "settings-profile-light"; Path = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/scenarios/settings-profile-light.json" }
+          )
+
+          $captureTool = "tools/winui3-mac-test-runtime/tools/WindowsWindowCapture/bin/Release/net10.0-windows/WindowsWindowCapture.dll"
+          $fixtureProject = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/MeetingChallenge.WinUI.MacRuntimeProbe.csproj"
+          $fixtureExecutable = "apps/windows/tests/MeetingChallenge.WinUI.MacRuntimeProbe/bin/Release/net10.0-windows10.0.19041.0/MeetingChallenge.WinUI.MacRuntimeProbe.exe"
+
+          foreach ($scenario in $scenarios) {
+            $scenarioJson = Get-Content $scenario.Path -Raw | ConvertFrom-Json
+            $viewport = "$($scenarioJson.viewport.width)x$($scenarioJson.viewport.height)"
+            $fixtureScenarioPath = (Resolve-Path $scenario.Path).Path
+            $outDir = Join-Path $env:EMSI_EVIDENCE_ROOT "screenshots\$($scenario.Name)"
+            New-Item -ItemType Directory -Force $outDir | Out-Null
+            $launchLog = Join-Path $outDir "native-launch.log"
+            $env:WINUI3_MAC_NATIVE_LAUNCH_LOG = $launchLog
+
+            dotnet $captureTool `
+              --title "Meeting Challenge Windows macOS Runtime Probe" `
+              --output "$outDir/windows-reference.png" `
+              --metadata-output "$outDir/windows-reference.json" `
+              --client-area `
+              --require-title-match `
+              --timeout-seconds 60 `
+              --reference-source native-winui `
+              --fixture-project $fixtureProject `
+              --scenario $scenario.Path `
+              --scenario-name $scenario.Name `
+              --commit-sha $sourceCommit `
+              --workflow-run-id "${{ github.run_id }}" `
+              --runner-image $runnerImage `
+              --viewport $viewport `
+              --scale "$($scenarioJson.scale)" `
+              --theme $scenarioJson.theme `
+              --settle-ms 1000 `
+              -- $fixtureExecutable --scenario $fixtureScenarioPath
+
+            $captureExitCode = $LASTEXITCODE
+            Remove-Item Env:\WINUI3_MAC_NATIVE_LAUNCH_LOG -ErrorAction SilentlyContinue
+            if ($captureExitCode -ne 0) {
+              if (Test-Path $launchLog) {
+                Write-Host "===== Native launch log for $($scenario.Name) ====="
+                Get-Content $launchLog -Raw
+              }
+
+              throw "Downstream native WinUI reference capture failed for $($scenario.Name) with exit code $captureExitCode."
+            }
+
+            $metadata = Get-Content "$outDir/windows-reference.json" -Raw | ConvertFrom-Json
+            if ($metadata.referenceSource -ne "native-winui") {
+              throw "Windows reference provenance for $($scenario.Name) was '$($metadata.referenceSource)', expected native-winui."
+            }
+            if ($metadata.captureMode -ne "client-area") {
+              throw "Windows reference capture mode for $($scenario.Name) was '$($metadata.captureMode)', expected client-area."
+            }
+            if ($metadata.dimensions.width -ne $scenarioJson.viewport.width -or $metadata.dimensions.height -ne $scenarioJson.viewport.height) {
+              throw "Windows reference dimensions for $($scenario.Name) were $($metadata.dimensions.width)x$($metadata.dimensions.height), expected $viewport."
+            }
+          }
+
+      - name: Copy sanitized evidence to emsi_qa
+        run: |
+          $sourceCommit = git -C work/emsi rev-parse HEAD
+          $date = Get-Date -Format 'yyyy-MM-dd'
+          $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+          $label = ($env:EMSI_QA_LABEL -replace '[^A-Za-z0-9._-]', '-')
+          if ([string]::IsNullOrWhiteSpace($label)) { $label = 'downstream-probe' }
+          $dest = Join-Path 'work/emsi_qa/windows/probe-screenshots' "$date-$label-$stamp"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item "$env:EMSI_EVIDENCE_ROOT\screenshots\*" $dest -Recurse -Force
+          @"
+          # Windows Downstream Probe Screenshots - $date
+
+          Native WinUI client-area reference screenshots for MeetingChallenge.WinUI.MacRuntimeProbe.
+
+          - Source ref: ``$env:EMSI_SOURCE_REF``
+          - Source commit: ``$sourceCommit``
+          - Runner repo: ``MarlonJD/windows_public_runner``
+          - Capture mode: client-area
+          - Screenshots: PNG
+          - Privacy: screenshots are committed only to the private QA evidence repository.
+          "@ | Set-Content -Path (Join-Path $dest 'README.md') -Encoding UTF8
+
+      - name: Commit and push QA evidence
+        working-directory: work/emsi_qa
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add windows/probe-screenshots
+          if (git diff --cached --quiet) {
+            Write-Host 'No QA evidence changes to commit.'
+          } else {
+            git commit -m "Add Windows downstream probe screenshots"
+            git push
+          }
+
+      - name: Clean public runner workspace
+        if: always()
+        run: |
+          Remove-Item -Recurse -Force work -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:EMSI_EVIDENCE_ROOT -ErrorAction SilentlyContinue

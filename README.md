@@ -13,7 +13,7 @@ This repository must not retain EMSI source, screenshots, logs, tokens, account 
 
 ## Run
 
-Use **Actions -> Windows page screenshots -> Run workflow**.
+Use **Actions -> Windows page screenshots -> Run workflow** for the live packaged app page sweep.
 
 Inputs:
 
@@ -24,3 +24,12 @@ Inputs:
 - `api_base_url`: temporary HTTPS API URL, for example a `trycloudflare.com` tunnel to local `http://localhost:8080`.
 
 The workflow captures login plus signed-in pages for Home, Channels, Events, Messages, Notifications, Settings, and Admin when visible. Screenshots are JPG evidence artifacts and are pushed only to `MarlonJD/emsi_qa`.
+
+Use **Actions -> Windows downstream probe screenshots -> Run workflow** for the production-like probe scenarios used by `winui3-mac-test-runtime`.
+
+Inputs:
+
+- `source_ref`: EMSI source branch, tag, or SHA. Defaults to `main`.
+- `qa_label`: destination label under `windows/probe-screenshots/`. Defaults to `downstream-probe`.
+
+The downstream probe workflow builds `MeetingChallenge.WinUI.MacRuntimeProbe`, captures native WinUI client-area PNG references for Login, Home shell, Messages multiline input, Admin dashboard/workbench, command search, status states, and settings/profile, then pushes only the sanitized evidence to `MarlonJD/emsi_qa`.
